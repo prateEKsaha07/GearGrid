@@ -26,7 +26,9 @@
 - Digital agreement e-sign (pickup + return)
 - OTP exchange at handover
 - Condition-photo upload (pickup + return)
-- Security deposit hold/release logic
+- Security deposit recording (two-party confirmation, no in-app money movement)
+- Payment confirmation flow (deposit, rental, extension, deposit return)
+- Itemised invoice generation + invoice page
 
 ## Phase 5 — Extension & Relist (3–5 hrs)
 - Extension request flow (owner approval, conflict check, extra fee)
@@ -58,5 +60,6 @@
 - Group pooling, smart ranked matching, demand prediction
 - Predictive maintenance, barter/exchange, FPO integration
 - Weather-aware scheduling, skill-linked rentals, badges, carbon tracker
-- In-app payments/escrow, insurance/liability coverage
+- Payment gateway: in-app payments, escrow-held deposits, automatic commission collection, refunds
+- Insurance/liability coverage
 - Multilingual UI beyond Hindi/English

@@ -1,6 +1,6 @@
 # GearGrid — Database Schema (POC Draft)
 
-*11 tables. Postgres via Supabase. Field types are indicative — refine during actual migration writing.*
+*13 tables. Postgres via Supabase. No money moves through the app in the POC — payments are made directly between renter and owner and only recorded and confirmed here. Field types are indicative — refine during actual migration writing.*
 
 ---
 
@@ -131,7 +131,8 @@ Created once a bid is accepted. Central record tying a listing, owner, and rente
 | renter_id | uuid (FK → users.id) | |
 | start_date | date | |
 | end_date | date | mutable on approved extension |
-| deposit_amount | numeric | |
+| deposit_amount | numeric | agreed security deposit; paid directly to the owner, never through the app |
+| deposit_status | text | pending / paid_confirmed / returned / partially_retained / forfeited — derived from `payment_confirmations` |
 | status | text | confirmed / active / return_pending / completed / non_returned / cancelled |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
@@ -210,11 +211,59 @@ Feeds the Notification Centre — bids, extension requests, return reminders, ra
 |---|---|---|
 | id | uuid (PK) | |
 | user_id | uuid (FK → users.id) | recipient |
-| type | text | new_bid / extension_request / return_reminder / rating_prompt / non_return_flag |
+| type | text | new_bid / extension_request / return_reminder / rating_prompt / non_return_flag / payment_confirmation_request / invoice_ready |
 | reference_id | uuid | id of the related booking/bid/etc. |
 | message | text | |
 | is_read | boolean | |
 | created_at | timestamptz | |
+
+---
+
+## 12. `payment_confirmations`
+One row per payment event. The app never processes the money; each side just confirms it happened. Replaced by real gateway records once a payment gateway is built.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid (PK) | |
+| booking_id | uuid (FK → bookings.id) | |
+| payment_type | text | deposit_paid / rental_paid / extension_paid / deposit_returned |
+| payer_id | uuid (FK → users.id) | who hands over the money |
+| receiver_id | uuid (FK → users.id) | who receives it |
+| amount | numeric | |
+| method | text | cash / upi / other |
+| payer_confirmed | boolean | payer marks "I paid" / "I returned it" |
+| payer_confirmed_at | timestamptz | nullable |
+| receiver_confirmed | boolean | receiver marks "I received it" |
+| receiver_confirmed_at | timestamptz | nullable |
+| status | text | pending / confirmed / mismatch_flagged |
+| note | text | nullable — e.g. reason for a partial deposit retention |
+| created_at | timestamptz | |
+
+---
+
+## 13. `invoices`
+Itemised breakdown generated for every transaction when the return is confirmed. Shown to both parties and stored in History.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid (PK) | |
+| booking_id | uuid (FK → bookings.id) | unique — one invoice per booking |
+| rental_days | int | original booked days |
+| price_per_day | numeric | snapshot at booking time |
+| base_rental_amount | numeric | rental_days × price_per_day |
+| extension_days | int | 0 if none |
+| extension_amount | numeric | sum of approved extension fees |
+| commission_rate | numeric | configurable platform rate |
+| commission_amount | numeric | calculated and shown; collection deferred until a payment gateway exists |
+| tax_rate | numeric | configurable; correct rates and applicability to be verified before launch |
+| tax_amount | numeric | |
+| total_rental_charges | numeric | base + extension + commission + taxes |
+| deposit_paid | numeric | from `payment_confirmations` |
+| deposit_returned | numeric | |
+| deposit_retained | numeric | |
+| deposit_retained_reason | text | nullable |
+| net_deposit_position | numeric | deposit_paid − deposit_returned − deposit_retained |
+| generated_at | timestamptz | |
 
 ---
 
@@ -227,6 +276,8 @@ Feeds the Notification Centre — bids, extension requests, return reminders, ra
 - `bookings` 1—N `agreements` (pickup + return)
 - `bookings` 1—N `ratings` (pickup + return, both parties)
 - `bookings` 1—N `extension_requests`
+- `bookings` 1—N `payment_confirmations`
+- `bookings` 1—1 `invoices`
 - `users` 1—1 `reliability_scores`
 - `users` 1—N `notifications`
 
@@ -236,4 +287,6 @@ Feeds the Notification Centre — bids, extension requests, return reminders, ra
 - New for GearGrid: `equipment_categories` (handheld / vehicle / stationary grouping), `bookings` as a distinct slot/calendar entity, `agreements`, two-stage `ratings`, `extension_requests`.
 - Category-specific fields on `equipment_listings` (registration_number, fuel_type, horsepower, power_source, capacity_spec) are nullable and only relevant per category group — UI should show/hide fields based on the selected category rather than every listing filling every field.
 - Several `users` fields (farm_size_acres, primary_crop_type, years_farming, is_fpo_member, payment/bank fields, referral_code, bio) are defined now but not required at MVP — created ahead of time so the schema doesn't need migration later when these features are built.
+- Payments are recorded, not processed: `payment_confirmations` holds two-party confirmations (payer and receiver) for the deposit, rental amount, extension charges and deposit return. `invoices` snapshots the final breakdown. When a payment gateway is added later, these tables gain gateway transaction ids rather than being redesigned.
+- Commission and tax amounts are computed and stored on every invoice from day one, but collecting the commission needs a payment gateway.
 - Dispute handling table intentionally omitted for POC — `agreements` and `ratings` already capture enough evidence to build a disputes table on top later without re-architecting.

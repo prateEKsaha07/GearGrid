@@ -69,7 +69,9 @@ Goal: complete the flows already designed in the POC doc.
 - Manual relist decision (now / later / keep unlisted)
 - Two-stage ratings (pickup + return, both parties)
 - Notification Centre
-- Security deposit field + hold/release logic
+- Security deposit recording: renter marks paid, owner confirms received; same again at return (no money moves through the app)
+- Payment confirmation flow for rental amount and extension charges (payer marks paid, receiver confirms)
+- Itemised invoice generated at return: original price, extension charges, deposit, commission, taxes, total
 - Non-return flagging + escalation
 
 ---
@@ -99,7 +101,7 @@ Goal: everything that improves the product but isn't required for it to function
 | Submission description + PPT | Oct 16 |
 | Phase A complete | Dev start + ~2 days |
 | Phase B complete | Dev start + ~5 days |
-| Phase C complete | Dev start + ~8 days |
+| Phase C complete | Dev start + ~10 days |
 | Phase D + E complete | Before Semi-finale round (dates TBA) |
 
 ---
@@ -120,7 +122,8 @@ Goal: everything that improves the product but isn't required for it to function
 - Group pooling, smart ranked matching, demand prediction
 - Predictive maintenance, barter/exchange, FPO integration
 - Weather-aware scheduling, skill-linked rentals, badges, carbon tracker
-- In-app payments/escrow, insurance/liability coverage
+- Payment gateway: in-app payments, escrow-held deposits, automatic commission collection, refunds
+- Insurance/liability coverage
 - Dispute resolution workflow (evidence already captured via `agreements` + `ratings`)
 - Multilingual UI beyond Hindi/English
 - Real Terms & Conditions (temporary AI-drafted version used for POC/demo)
