@@ -3,8 +3,7 @@ import LoginSignup from "./pages/auth/LoginSignup";
 import SuccessStatus from "./pages/status/SuccessStatus";
 import ErrorStatus from "./pages/status/ErrorStatus";
 import DashboardHub from "./pages/dashboard/DashboardHub";
-import { supabase } from "./lib/supabase";
-
+import PostRequest from "./pages/request/PostRequest";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
@@ -48,7 +47,7 @@ function App() {
         {/* <Route path="/listings/:id/manage" element={<ListingDashboard />} /> */}
         {/* <Route path="/listings/:id/extension" element={<ExtensionApproval />} /> */}
         {/* <Route path="/listings/:id/relist" element={<RelistDecision />} /> */}
-        {/* <Route path="/requests/new" element={<PostRequest />} /> */}
+        <Route path="/requests/new" element={<PostRequest />} />
         {/* <Route path="/requests" element={<RequestDashboard />} /> */}
         {/* <Route path="/requests/:id" element={<RequestDetail />} /> */}
         {/* <Route path="/requests/:id/extension" element={<ExtensionRequest />} /> */}
