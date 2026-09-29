@@ -1,6 +1,8 @@
+cloudinary
 fastapi
-uvicorn[standard]
-supabase
-python-dotenv
 pydantic
 pydantic-settings
+python-dotenv
+supabase
+uvicorn[standard]
+python-multipart

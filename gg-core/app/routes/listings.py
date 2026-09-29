@@ -18,6 +18,9 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 router = APIRouter()
 
+from fastapi import UploadFile, File
+from app.integrations.cloudinary import upload_image
+
 class ListingCreate(BaseModel):
     owner_id: str
     category_id: str
@@ -104,5 +107,43 @@ def update_listing(id: str, payload: ListingUpdate):
         raise HTTPException(status_code=404, detail="Listing not found")
 
     return result.data[0]
+
+@router.post("/{id}/photos")
+async def upload_listing_photo(id: str, file: UploadFile = File(...)):
+    try:
+        fetched = supabase.table("equipment_listings").select("photos").eq("id", id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not fetched.data:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    current_photos = fetched.data[0].get("photos") or []
+
+    file_bytes = await file.read()
+
+    try:
+        url = upload_image(file_bytes, folder="listings")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    new_photos = current_photos + [url]
+
+    try:
+        result = (
+            supabase.table("equipment_listings")
+            .update({"photos": new_photos})
+            .eq("id", id)
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    return result.data[0]
+
+
 
 

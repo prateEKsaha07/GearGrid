@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from supabase import create_client, Client
 from typing import Literal
+from app.services.calendar_logic import has_overlap
 
 load_dotenv()
 
@@ -66,10 +67,45 @@ class BidUpdate(BaseModel):
 
 @router.patch("/{id}")
 def update_bid(id: str, payload: BidUpdate):
+    if payload.status != "accepted":
+        try:
+            result = (
+                supabase.table("bids")
+                .update({"status": payload.status})
+                .eq("id", id)
+                .execute()
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Bid not found")
+
+        return result.data[0]
+
+    try:
+        fetched = supabase.table("bids").select("*").eq("id", id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not fetched.data:
+        raise HTTPException(status_code=404, detail="Bid not found")
+
+    bid = fetched.data[0]
+    listing_id = bid["listing_id"]
+    proposed_start = bid["proposed_start"]
+    proposed_end = bid["proposed_end"]
+
+    if listing_id is None:
+        raise HTTPException(status_code=400, detail="Cannot accept a bid without listing_id")
+
+    if has_overlap(listing_id, proposed_start, proposed_end):
+        raise HTTPException(status_code=409, detail="Slot conflict — dates unavailable")
+
     try:
         result = (
             supabase.table("bids")
-            .update({"status": payload.status})
+            .update({"status": "accepted"})
             .eq("id", id)
             .execute()
         )
@@ -78,6 +114,15 @@ def update_bid(id: str, payload: BidUpdate):
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Bid not found")
+
+    try:
+        supabase.table("bids").update({"status": "auto_rejected_overlap"}).eq(
+            "listing_id", listing_id
+        ).eq("status", "pending").lte("proposed_start", proposed_end).gte(
+            "proposed_end", proposed_start
+        ).neq("id", id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return result.data[0]
 

@@ -1,5 +1,4 @@
-# GearGrid 🌾
-
+# GearGrid 
 **Grow More, Own Less.**
 
 Peer-to-peer farm equipment rental marketplace — small farmers can rent tractors, tillers, harvesters and sprayers from nearby owners instead of buying them, with slot-based booking, digital handover agreements, and reliability scoring built in.
