@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
+import { useAuth } from "../../hooks/useAuth";
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -15,6 +16,7 @@ type SpeechRecognitionLike = {
 
 export default function PostRequest() {
   const navigate = useNavigate();
+  const { userId, loading } = useAuth();
 
   const [category, setCategory] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
@@ -74,7 +76,7 @@ export default function PostRequest() {
     e.preventDefault();
 
     const body = {
-      renter_id: "test-user-id",
+      renter_id: userId,
       category,
       task_description: taskDescription,
       needed_from: neededFrom,
@@ -108,6 +110,9 @@ export default function PostRequest() {
       });
     }
   };
+
+  if (loading) return <div>Loading...</div>;
+  if (!userId) return <div>Not logged in</div>;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

@@ -18,6 +18,7 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 router = APIRouter()
 
+
 class BidCreate(BaseModel):
     bidder_id: str
     proposed_price: float
@@ -25,6 +26,7 @@ class BidCreate(BaseModel):
     proposed_end: str
     listing_id: str | None = None
     request_id: str | None = None
+
 
 @router.post("")
 def create_bid(payload: BidCreate):
@@ -40,6 +42,7 @@ def create_bid(payload: BidCreate):
         raise HTTPException(status_code=500, detail="Insert returned no data")
 
     return result.data[0]
+
 
 @router.get("")
 def list_bids(
@@ -62,8 +65,10 @@ def list_bids(
 
     return result.data
 
+
 class BidUpdate(BaseModel):
     status: Literal["pending", "accepted", "rejected", "auto_rejected_overlap"]
+
 
 @router.patch("/{id}")
 def update_bid(id: str, payload: BidUpdate):
@@ -73,6 +78,7 @@ def update_bid(id: str, payload: BidUpdate):
                 supabase.table("bids")
                 .update({"status": payload.status})
                 .eq("id", id)
+                .select()
                 .execute()
             )
         except Exception as e:
@@ -97,7 +103,21 @@ def update_bid(id: str, payload: BidUpdate):
     proposed_end = bid["proposed_end"]
 
     if listing_id is None:
-        raise HTTPException(status_code=400, detail="Cannot accept a bid without listing_id")
+        try:
+            result = (
+                supabase.table("bids")
+                .update({"status": "accepted"})
+                .eq("id", id)
+                .select()
+                .execute()
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Bid not found")
+
+        return result.data[0]
 
     if has_overlap(listing_id, proposed_start, proposed_end):
         raise HTTPException(status_code=409, detail="Slot conflict — dates unavailable")
@@ -107,6 +127,7 @@ def update_bid(id: str, payload: BidUpdate):
             supabase.table("bids")
             .update({"status": "accepted"})
             .eq("id", id)
+            .select()
             .execute()
         )
     except Exception as e:
@@ -120,15 +141,8 @@ def update_bid(id: str, payload: BidUpdate):
             "listing_id", listing_id
         ).eq("status", "pending").lte("proposed_start", proposed_end).gte(
             "proposed_end", proposed_start
-        ).neq("id", id).execute()
+        ).neq("id", id).select().execute()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return result.data[0]
-
-
-
-
-
-
-
