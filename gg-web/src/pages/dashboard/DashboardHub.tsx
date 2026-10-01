@@ -3,17 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
 
-const TABS = [
-  "My Listings",
-  "My Requests",
-  "Browse Nearby",
-  "Bookings",
-  "Pending",
-  "History",
-] as const;
-
-type Tab = (typeof TABS)[number];
-
 type Listing = {
   id: string;
   owner_id: string;
@@ -115,8 +104,6 @@ function bookingActionFor(role: "owner" | "renter", status: string) {
 }
 
 export default function DashboardHub() {
-  const [activeTab, setActiveTab] = useState<Tab>("My Listings");
-  const profileComplete = false;
   const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
 
@@ -184,6 +171,7 @@ export default function DashboardHub() {
   const myBookings = bookings.filter(
     (b) => b.owner_id === userId || b.renter_id === userId
   );
+
   const activeBookings = myBookings.filter(
     (b) =>
       b.status === "pickup_in_progress" ||
@@ -206,9 +194,7 @@ export default function DashboardHub() {
     if (b.status === "confirmed" && role === "renter") return true;
     if (b.status === "active" && role === "owner") return true;
     if (b.status === "pickup_in_progress" && role === "renter") return true;
-    if (b.status === "pickup_in_progress" && role === "owner") return false;
     if (b.status === "return_in_progress" && role === "owner") return true;
-    if (b.status === "return_in_progress" && role === "renter") return false;
     return false;
   });
 
@@ -220,198 +206,421 @@ export default function DashboardHub() {
 
   const renderStatusBadge = (status: string, styles: Record<string, string>) => (
     <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
         styles[status] ?? "bg-neutral-500/10 text-neutral-600"
       }`}
     >
-      {status}
+      {status.replace(/_/g, " ")}
     </span>
   );
 
-  const renderEmpty = (message: string) => (
-    <div className="rounded-lg border border-border p-6 text-center text-sm text-muted-foreground">
-      {message}
-    </div>
-  );
-
-  const renderBookingRow = (b: Booking) => {
+  const renderBookingCard = (b: Booking) => {
     const role: "owner" | "renter" = b.owner_id === userId ? "owner" : "renter";
     const action = bookingActionFor(role, b.status);
+    const otherRoleLabel = role === "owner" ? "You are the renter" : "You are the owner";
+
     return (
       <li key={b.id}>
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{listingTitleFor(b)}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {b.start_date} → {b.end_date} · You are the {role}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-semibold">{listingTitleFor(b)}</p>
             {renderStatusBadge(b.status, BOOKING_STATUS_STYLES)}
-            {action && (
-              <Link
-                to={`/bookings/${b.id}/${action.to}`}
-                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
-              >
-                {action.label}
-              </Link>
-            )}
           </div>
+
+          <p className="text-xs text-muted-foreground">
+            {b.start_date} → {b.end_date}
+          </p>
+
+          <span className="inline-flex w-fit rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground">
+            You are the {role}
+          </span>
+
+          {b.status === "cancelled" && b.cancelled_reason && (
+            <p className="text-xs text-muted-foreground">
+              Reason: {b.cancelled_reason.replace(/_/g, " ")}
+            </p>
+          )}
+
+          {action && (
+            <Link
+              to={`/bookings/${b.id}/${action.to}`}
+              className="mt-1 w-fit rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:opacity-90"
+            >
+              {action.label}
+            </Link>
+          )}
         </div>
       </li>
     );
   };
 
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
-          Loading...
+  const statCards = [
+    { label: "My Listings", value: myListings.length },
+    { label: "My Requests", value: myRequests.length },
+    { label: "Active Tools", value: activeBookings.length },
+    { label: "Pending Decisions", value: myPendingBids.length + pendingBookings.length },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <NavBar unreadCount={0} userName="User" />
+
+      <div className="mx-auto max-w-6xl px-6 py-8">
+        {/* Greeting */}
+        <div className="mb-6 flex items-start justify-between gap-6">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {new Date().toLocaleDateString("en-IN", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+              Namaste, User
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your listings, requests and handoffs in one place.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/listings/new")}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+            >
+              + Add listing
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/requests/new")}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted"
+            >
+              Post request
+            </button>
+          </div>
         </div>
-      );
-    }
 
-    if (error) {
-      return (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-900">
-          {error}
+        {/* Profile banner */}
+        <div className="mb-6 flex items-start justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 text-amber-700">⚠</span>
+            <div>
+              <p className="text-sm font-medium text-amber-900">
+                Complete your profile to transact safely
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Add your address, phone and preferred direct-payment details.
+                Browsing stays available.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/profile/edit")}
+            className="shrink-0 rounded-lg border border-amber-300 bg-background px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+          >
+            Complete profile
+          </button>
         </div>
-      );
-    }
 
-    switch (activeTab) {
-      case "My Listings":
-        if (myListings.length === 0) return renderEmpty("No listings yet.");
-        return (
-          <ul className="space-y-2">
-            {myListings.map((l) => (
-              <li key={l.id}>
-                <Link
-                  to={`/listings/${l.id}/manage`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{l.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      ₹{l.price_per_day}/day · {l.pincode}
-                    </p>
-                  </div>
-                  {renderStatusBadge(l.status, LISTING_STATUS_STYLES)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        );
+        {/* Stat cards */}
+        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {statCards.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-xl border border-border bg-card p-4"
+            >
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                {s.label}
+              </p>
+              <p className="mt-2 text-2xl font-semibold">{s.value}</p>
+            </div>
+          ))}
+        </div>
 
-      case "My Requests":
-        if (myRequests.length === 0) return renderEmpty("No requests yet.");
-        return (
-          <ul className="space-y-2">
-            {myRequests.map((r) => (
-              <li key={r.id}>
-                <Link
-                  to={`/requests/${r.id}`}
-                  className="flex items-start justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{r.category}</p>
-                    <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                      {r.task_description}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {r.needed_from} → {r.needed_to}
-                    </p>
-                  </div>
-                  {renderStatusBadge(r.status, REQUEST_STATUS_STYLES)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        );
+        {loading && (
+          <div className="rounded-xl border border-border p-6 text-sm text-muted-foreground">
+            Loading...
+          </div>
+        )}
 
-      case "Browse Nearby":
-        if (nearbyListings.length === 0) return renderEmpty("No available listings nearby.");
-        return (
-          <ul className="space-y-2">
-            {nearbyListings.map((l) => (
-              <li key={l.id}>
-                <Link
-                  to={`/listings/${l.id}`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{l.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      ₹{l.price_per_day}/day · {l.pincode}
-                    </p>
-                  </div>
-                  {renderStatusBadge(l.status, LISTING_STATUS_STYLES)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        );
+        {!loading && error && (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+            {error}
+          </div>
+        )}
 
-      case "Bookings":
-        if (activeBookings.length === 0 && historyBookings.length === 0) {
-          return renderEmpty("No bookings yet.");
-        }
-        return (
-          <div className="space-y-6">
+        {!loading && !error && (
+          <div className="space-y-10">
+            {/* My Listings */}
             <section>
-              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">My Listings</h2>
+                <Link
+                  to="/dashboard?tab=listings"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Open Listing Dashboard →
+                </Link>
+              </div>
+              {myListings.length === 0 ? (
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No listings yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {myListings.slice(0, 3).map((l) => (
+                    <Link
+                      key={l.id}
+                      to={`/listings/${l.id}/manage`}
+                      className="rounded-xl border border-border bg-card p-4 transition hover:bg-muted"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold">{l.title}</p>
+                        {renderStatusBadge(l.status, LISTING_STATUS_STYLES)}
+                      </div>
+                      <p className="mt-2 text-sm">₹{l.price_per_day}/day</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {l.pincode}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* My Requests */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">My Requests</h2>
+                <Link
+                  to="/requests"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Open Request Dashboard →
+                </Link>
+              </div>
+              {myRequests.length === 0 ? (
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No requests yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {myRequests.slice(0, 2).map((r) => (
+                    <Link
+                      key={r.id}
+                      to={`/requests/${r.id}`}
+                      className="rounded-xl border border-border bg-card p-4 transition hover:bg-muted"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold">{r.category}</p>
+                        {renderStatusBadge(r.status, REQUEST_STATUS_STYLES)}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {r.task_description}
+                      </p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {r.needed_from} → {r.needed_to} · {r.pincode}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Browse Nearby */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">Browse Nearby</h2>
+                <Link
+                  to="/browse"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  See all equipment →
+                </Link>
+              </div>
+              {nearbyListings.length === 0 ? (
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No available listings nearby.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {nearbyListings.slice(0, 3).map((l) => (
+                    <Link
+                      key={l.id}
+                      to={`/listings/${l.id}`}
+                      className="rounded-xl border border-border bg-card p-4 transition hover:bg-muted"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold">{l.title}</p>
+                        {renderStatusBadge(l.status, LISTING_STATUS_STYLES)}
+                      </div>
+                      <p className="mt-2 text-sm">₹{l.price_per_day}/day</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {l.pincode}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Bookings */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">Bookings</h2>
+                <span className="text-xs text-muted-foreground">
+                  pickup_in_progress · active · return_in_progress
+                </span>
+              </div>
+
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Active
               </h3>
               {activeBookings.length === 0 ? (
-                renderEmpty("No active bookings.")
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No active bookings.
+                </div>
               ) : (
-                <ul className="space-y-2">{activeBookings.map(renderBookingRow)}</ul>
+                <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {activeBookings.map(renderBookingCard)}
+                </ul>
               )}
-            </section>
-            <section>
-              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                Completed / Cancelled
+
+              <h3 className="mb-2 mt-6 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Archived
               </h3>
               {historyBookings.length === 0 ? (
-                renderEmpty("No history yet.")
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No archived bookings.
+                </div>
               ) : (
-                <ul className="space-y-2">{historyBookings.map(renderBookingRow)}</ul>
+                <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {historyBookings.map(renderBookingCard)}
+                </ul>
               )}
             </section>
-          </div>
-        );
 
-      case "Pending":
-        if (myPendingBids.length === 0 && pendingBookings.length === 0) {
-          return renderEmpty("Nothing pending.");
-        }
-        return (
-          <div className="space-y-6">
+            {/* Pending */}
             <section>
-              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                Bids on your listings
-              </h3>
-              {myPendingBids.length === 0 ? (
-                renderEmpty("No pending bids.")
+              <h2 className="mb-3 text-lg font-semibold tracking-tight">Pending</h2>
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <h3 className="text-sm font-semibold">Pending Decisions</h3>
+                  {myPendingBids.length === 0 ? (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      No pending bids.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {myPendingBids.map((b) => {
+                        const listing = allListingsForLookup.find(
+                          (l) => l.id === b.listing_id
+                        );
+                        return (
+                          <li key={b.id}>
+                            <Link
+                              to={`/listings/${b.listing_id}/manage`}
+                              className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 transition hover:bg-muted"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-medium">
+                                  {listing?.title ?? "Listing"} · ₹{b.proposed_price}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                  {b.proposed_start} → {b.proposed_end}
+                                </p>
+                              </div>
+                              {renderStatusBadge(b.status, BID_STATUS_STYLES)}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <h3 className="text-sm font-semibold">
+                    Won / Confirmed Awaiting Handoff
+                  </h3>
+                  {pendingBookings.length === 0 ? (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      No bookings awaiting action.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {pendingBookings.map((b) => {
+                        const role: "owner" | "renter" =
+                          b.owner_id === userId ? "owner" : "renter";
+                        const action = bookingActionFor(role, b.status);
+                        return (
+                          <li
+                            key={b.id}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium">
+                                {listingTitleFor(b)}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {b.start_date} → {b.end_date} · You are the {role}
+                              </p>
+                            </div>
+                            {action && (
+                              <Link
+                                to={`/bookings/${b.id}/${action.to}`}
+                                className="shrink-0 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium transition hover:bg-muted"
+                              >
+                                {action.label}
+                              </Link>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* History */}
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-semibold tracking-tight">History</h2>
+                <span className="text-xs text-muted-foreground">
+                  Completed and cancelled bookings
+                </span>
+              </div>
+              {historyBookings.length === 0 ? (
+                <div className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                  No history yet.
+                </div>
               ) : (
                 <ul className="space-y-2">
-                  {myPendingBids.map((b) => {
-                    const listing = allListingsForLookup.find((l) => l.id === b.listing_id);
+                  {historyBookings.slice(0, 5).map((b) => {
+                    const role: "owner" | "renter" =
+                      b.owner_id === userId ? "owner" : "renter";
                     return (
                       <li key={b.id}>
                         <Link
-                          to={`/listings/${b.listing_id}/manage`}
-                          className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
+                          to={`/bookings/${b.id}/invoice`}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 transition hover:bg-muted"
                         >
-                          <div>
-                            <p className="text-sm font-medium">
-                              {listing?.title ?? "Listing"} · ₹{b.proposed_price}
-                            </p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {b.proposed_start} → {b.proposed_end}
-                            </p>
-                          </div>
-                          {renderStatusBadge(b.status, BID_STATUS_STYLES)}
+                          <span className="w-20 shrink-0 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                            {role}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {listingTitleFor(b)}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {b.start_date} → {b.end_date}
+                          </span>
+                          {renderStatusBadge(b.status, BOOKING_STATUS_STYLES)}
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            Invoice & records →
+                          </span>
                         </Link>
                       </li>
                     );
@@ -419,68 +628,8 @@ export default function DashboardHub() {
                 </ul>
               )}
             </section>
-
-            <section>
-              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                Bookings awaiting your action
-              </h3>
-              {pendingBookings.length === 0 ? (
-                renderEmpty("No bookings need your action.")
-              ) : (
-                <ul className="space-y-2">{pendingBookings.map(renderBookingRow)}</ul>
-              )}
-            </section>
-          </div>
-        );
-
-      case "History":
-        if (historyBookings.length === 0) return renderEmpty("No history yet.");
-        return <ul className="space-y-2">{historyBookings.map(renderBookingRow)}</ul>;
-    }
-  };
-
-  if (authLoading) return <div>Loading...</div>;
-  if (!userId) return <div>Not logged in</div>;
-
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <NavBar unreadCount={0} userName="User" />
-
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        {!profileComplete && (
-          <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Complete your profile to start listing or bidding
           </div>
         )}
-
-        <div className="mb-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => navigate("/dev")}
-            className="rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted"
-          >
-            Dev Routes
-          </button>
-        </div>
-
-        <div className="mb-6 flex flex-wrap gap-2">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-lg px-4 py-2 text-sm transition ${
-                activeTab === tab
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        <div className="rounded-lg border border-border p-6">{renderContent()}</div>
       </div>
     </div>
   );
