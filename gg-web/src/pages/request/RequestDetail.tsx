@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -50,6 +50,7 @@ export default function RequestDetail() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notOwner, setNotOwner] = useState(false);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
 
   const fetchData = async () => {
@@ -67,6 +68,10 @@ export default function RequestDetail() {
       }
       const requestData = (await requestRes.json()) as RentalRequest;
       setRequest(requestData);
+
+      if (userId && requestData.renter_id !== userId) {
+        setNotOwner(true);
+      }
 
       const bidsRes = await fetch(
         `${import.meta.env.VITE_API_URL}/bids?request_id=${requestId}`
@@ -137,6 +142,7 @@ export default function RequestDetail() {
 
   if (authLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (notOwner) return <Navigate to="/error" replace />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

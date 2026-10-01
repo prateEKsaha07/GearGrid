@@ -1,22 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
-
-type Booking = {
-  id: string;
-  listing_id: string;
-  bid_id: string;
-  owner_id: string;
-  renter_id: string;
-  start_date: string;
-  end_date: string;
-  deposit_amount: number;
-  deposit_status: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-};
+import { useBookingRole } from "../../hooks/useBookingRole";
 
 type Listing = {
   id: string;
@@ -49,119 +35,128 @@ export default function ActiveRental() {
   const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
 
-  const [booking, setBooking] = useState<Booking | null>(null);
+  const { booking: roleBooking, role: callerRole, loading: roleLoading, error: roleError } =
+    useBookingRole(bookingId);
+
   const [listing, setListing] = useState<Listing | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [listingLoading, setListingLoading] = useState(false);
+  const [listingError, setListingError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
+  // Fetch the listing title once the booking resolves.
   useEffect(() => {
-    if (!bookingId) return;
+    if (!roleBooking?.listing_id) return;
 
+    let cancelled = false;
     const load = async () => {
-      setLoading(true);
+      setListingLoading(true);
       try {
-        const bookingRes = await fetch(
-          `${import.meta.env.VITE_API_URL}/bookings/${bookingId}`
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/listings/${roleBooking.listing_id}`
         );
-        if (!bookingRes.ok) {
-          const text = await bookingRes.text();
-          throw new Error(text || `Request failed with ${bookingRes.status}`);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed with ${res.status}`);
         }
-        const bookingData = (await bookingRes.json()) as Booking;
-        setBooking(bookingData);
-
-        const listingRes = await fetch(
-          `${import.meta.env.VITE_API_URL}/listings/${bookingData.listing_id}`
-        );
-        if (!listingRes.ok) {
-          const text = await listingRes.text();
-          throw new Error(text || `Request failed with ${listingRes.status}`);
+        const data = (await res.json()) as Listing;
+        if (!cancelled) {
+          setListing(data);
+          setListingError(null);
         }
-        const listingData = (await listingRes.json()) as Listing;
-        setListing(listingData);
-
-        setError(null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Something went wrong";
-        setError(message);
-        setBooking(null);
-        setListing(null);
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Something went wrong";
+          setListingError(message);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setListingLoading(false);
       }
     };
 
     load();
-  }, [bookingId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [roleBooking?.listing_id]);
 
+  // Ticker for the countdown.
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const endMs = booking ? new Date(`${booking.end_date}T23:59:59`).getTime() : 0;
-  const msRemaining = endMs - now;
-
-  if (authLoading) return <div>Loading...</div>;
+  if (authLoading || roleLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (!roleBooking || !callerRole) return <Navigate to="/error" replace />;
+
+  const endMs = new Date(`${roleBooking.end_date}T23:59:59`).getTime();
+  const msRemaining = endMs - now;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Active Rental</h1>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight">Active Rental</h1>
+          <button
+            type="button"
+            onClick={() => navigate(`/bookings/${bookingId}/track`)}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium transition hover:bg-muted"
+          >
+            Tracker
+          </button>
+        </div>
 
-        {loading && (
-          <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
-            Loading...
-          </div>
-        )}
-
-        {!loading && error && (
+        {roleError && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-900">
-            {error}
+            {roleError}
           </div>
         )}
 
-        {!loading && !error && booking && (
-          <div className="space-y-6">
-            <section className="rounded-lg border border-border p-6">
-              <div className="flex items-start justify-between gap-4">
-                <h2 className="text-lg font-medium">
-                  {listing?.title ?? "Listing"}
-                </h2>
-                <span
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-                    BOOKING_STATUS_STYLES[booking.status] ??
-                    "bg-neutral-500/10 text-neutral-600"
-                  }`}
-                >
-                  {booking.status}
-                </span>
+        {listingError && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            Could not load listing title: {listingError}
+          </div>
+        )}
+
+        <div className="space-y-6">
+          <section className="rounded-lg border border-border p-6">
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-lg font-medium">
+                {listing?.title ?? (listingLoading ? "Loading…" : "Listing")}
+              </h2>
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+                  BOOKING_STATUS_STYLES[roleBooking.status] ??
+                  "bg-neutral-500/10 text-neutral-600"
+                }`}
+              >
+                {roleBooking.status}
+              </span>
+            </div>
+
+            <dl className="mt-5 space-y-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">Start Date</dt>
+                <dd className="text-right">{roleBooking.start_date}</dd>
               </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">End Date</dt>
+                <dd className="text-right">{roleBooking.end_date}</dd>
+              </div>
+            </dl>
+          </section>
 
-              <dl className="mt-5 space-y-3 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Start Date</dt>
-                  <dd className="text-right">{booking.start_date}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">End Date</dt>
-                  <dd className="text-right">{booking.end_date}</dd>
-                </div>
-              </dl>
-            </section>
+          <section className="rounded-lg border border-border p-6 text-center">
+            <p className="text-sm text-muted-foreground">Time Remaining</p>
+            <p className="mt-2 text-3xl font-semibold tabular-nums">
+              {formatCountdown(msRemaining)}
+            </p>
+          </section>
 
-            <section className="rounded-lg border border-border p-6 text-center">
-              <p className="text-sm text-muted-foreground">Time Remaining</p>
-              <p className="mt-2 text-3xl font-semibold tabular-nums">
-                {formatCountdown(msRemaining)}
-              </p>
-            </section>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {callerRole === "renter" && (
               <button
                 type="button"
                 onClick={() => navigate(`/bookings/${bookingId}/extension`)}
@@ -169,6 +164,8 @@ export default function ActiveRental() {
               >
                 Request Extension
               </button>
+            )}
+            {callerRole === "owner" && (
               <button
                 type="button"
                 onClick={() => navigate(`/bookings/${bookingId}/return`)}
@@ -176,9 +173,9 @@ export default function ActiveRental() {
               >
                 Start Return
               </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

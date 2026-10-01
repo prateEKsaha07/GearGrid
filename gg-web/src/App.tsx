@@ -24,6 +24,7 @@ import RequestDetail from "./pages/request/RequestDetail";
 import RequestDashboard from "./pages/request/RequestDashboard";
 import BackendConnecting from "./pages/auth/BackendConnecting";
 import TermsConsent from "./pages/auth/TermsConsent";
+import TrackBooking from "./pages/booking/TrackBooking";
 import DevRoutes from "./pages/DevRoutes";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -65,6 +66,7 @@ function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/edit" element={<EditProfile />} />
         <Route path="/profile/ratings" element={<ReliabilityRatings />} />
+        <Route path="/bookings/:id/track" element={<TrackBooking />} />
         <Route path="/dev" element={<DevRoutes />} />
       </Routes>
     </BrowserRouter>

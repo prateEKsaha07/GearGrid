@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../hooks/useAuth";
+import { useBookingRole } from "../../hooks/useBookingRole";
 
 type Invoice = {
   id: string;
@@ -27,7 +28,14 @@ type Invoice = {
 
 export default function InvoiceView() {
   const { id: bookingId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
+  const {
+    booking: roleBooking,
+    role: callerRole,
+    loading: roleLoading,
+    error: roleError,
+  } = useBookingRole(bookingId);
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,15 +103,26 @@ export default function InvoiceView() {
     }
   };
 
-  if (authLoading) return <div>Loading...</div>;
+  if (authLoading || roleLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (roleError) return <div>{roleError}</div>;
+  if (!roleBooking || !callerRole) return <Navigate to="/error" replace />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Invoice</h1>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight">Invoice</h1>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium transition hover:bg-muted"
+          >
+            Dashboard
+          </button>
+        </div>
 
         {loading && (
           <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
@@ -258,6 +277,14 @@ export default function InvoiceView() {
                 </tbody>
               </table>
             </div>
+
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="w-full rounded-lg border border-border px-4 py-3 text-sm font-medium transition hover:bg-muted"
+            >
+              Back to Dashboard
+            </button>
           </div>
         )}
       </div>

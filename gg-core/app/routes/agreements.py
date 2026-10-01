@@ -136,7 +136,55 @@ async def upload_agreement_photo(id: str, file: UploadFile = File(...)):
 
     return result.data[0]
 
+@router.get("/{booking_id}/{stage}")
+def get_agreement(booking_id: str, stage: str, caller_id: str):
+    if stage not in ("pickup", "return"):
+        raise HTTPException(status_code=400, detail="stage must be 'pickup' or 'return'")
 
+    try:
+        booking_result = (
+            supabase.table("bookings")
+            .select("owner_id, renter_id")
+            .eq("id", booking_id)
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not booking_result.data:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking = booking_result.data[0]
+    owner_id = booking["owner_id"]
+    renter_id = booking["renter_id"]
+
+    if caller_id not in (owner_id, renter_id):
+        raise HTTPException(status_code=403, detail="Not a party to this booking")
+
+    try:
+        agreement_result = (
+            supabase.table("agreements")
+            .select("*")
+            .eq("booking_id", booking_id)
+            .eq("stage", stage)
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not agreement_result.data:
+        raise HTTPException(status_code=404, detail="Agreement not found")
+
+    agreement = agreement_result.data[0]
+
+    if stage == "pickup":
+        if caller_id == renter_id:
+            agreement["pickup_pin"] = None
+    else:
+        if caller_id == owner_id:
+            agreement["return_pin"] = None
+
+    return agreement
 
 
 

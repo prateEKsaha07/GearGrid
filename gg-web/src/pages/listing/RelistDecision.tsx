@@ -1,19 +1,62 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
 
 type Option = "now" | "later" | "unlisted";
+
+type Listing = {
+  id: string;
+  owner_id: string;
+};
 
 export default function RelistDecision() {
   const { id: listingId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
 
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingLoading, setListingLoading] = useState(true);
+  const [notOwner, setNotOwner] = useState(false);
+
   const [selected, setSelected] = useState<Option | null>(null);
   const [relistDate, setRelistDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId || !listingId) return;
+
+    let cancelled = false;
+    const load = async () => {
+      setListingLoading(true);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/listings/${listingId}`
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed with ${res.status}`);
+        }
+        const data = (await res.json()) as Listing;
+        if (cancelled) return;
+        setListing(data);
+        if (data.owner_id !== userId) setNotOwner(true);
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Something went wrong";
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) setListingLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, listingId]);
 
   const patchListing = async (body: Record<string, unknown>) => {
     const res = await fetch(
@@ -77,8 +120,10 @@ export default function RelistDecision() {
     }
   };
 
-  if (authLoading) return <div>Loading...</div>;
+  if (authLoading || listingLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (notOwner) return <Navigate to="/error" replace />;
+  if (!listing) return <Navigate to="/error" replace />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

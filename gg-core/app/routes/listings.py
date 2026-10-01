@@ -1,11 +1,13 @@
 import os
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from supabase import create_client, Client
 from datetime import datetime
 from typing import Optional
+
+from app.integrations.cloudinary import upload_image
 
 load_dotenv()
 
@@ -18,8 +20,6 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 router = APIRouter()
 
-from fastapi import UploadFile, File
-from app.integrations.cloudinary import upload_image
 
 class ListingCreate(BaseModel):
     owner_id: str
@@ -52,9 +52,22 @@ def create_listing(payload: ListingCreate):
 
     return result.data[0]
 
+
 @router.get("")
-def list_listings(pincode: str | None = None):
-    query = supabase.table("equipment_listings").select("*").eq("status", "available")
+def list_listings(
+    pincode: str | None = None,
+    owner_id: str | None = None,
+    status: str | None = None,
+):
+    query = supabase.table("equipment_listings").select("*")
+
+    if owner_id is not None:
+        query = query.eq("owner_id", owner_id)
+    if status is not None:
+        query = query.eq("status", status)
+    elif owner_id is None:
+        query = query.eq("status", "available")
+
     if pincode is not None:
         query = query.eq("pincode", pincode)
 
@@ -64,6 +77,7 @@ def list_listings(pincode: str | None = None):
         raise HTTPException(status_code=400, detail=str(e))
 
     return result.data
+
 
 @router.get("/{id}")
 def get_listing(id: str):
@@ -76,6 +90,7 @@ def get_listing(id: str):
         raise HTTPException(status_code=404, detail="Listing not found")
 
     return result.data[0]
+
 
 class ListingUpdate(BaseModel):
     title: Optional[str] = None
@@ -93,13 +108,20 @@ class ListingUpdate(BaseModel):
     manufacture_year: Optional[int] = None
     horsepower: Optional[float] = None
 
+
 @router.patch("/{id}")
 def update_listing(id: str, payload: ListingUpdate):
     updates = payload.model_dump(exclude_none=True)
     updates["updated_at"] = datetime.utcnow().isoformat()
 
     try:
-        result = supabase.table("equipment_listings").update(updates).eq("id", id).execute()
+        result = (
+            supabase.table("equipment_listings")
+            .update(updates)
+            .eq("id", id)
+            .select()
+            .execute()
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -107,6 +129,7 @@ def update_listing(id: str, payload: ListingUpdate):
         raise HTTPException(status_code=404, detail="Listing not found")
 
     return result.data[0]
+
 
 @router.post("/{id}/photos")
 async def upload_listing_photo(id: str, file: UploadFile = File(...)):
@@ -134,6 +157,7 @@ async def upload_listing_photo(id: str, file: UploadFile = File(...)):
             supabase.table("equipment_listings")
             .update({"photos": new_photos})
             .eq("id", id)
+            .select()
             .execute()
         )
     except Exception as e:
@@ -143,7 +167,3 @@ async def upload_listing_photo(id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=404, detail="Listing not found")
 
     return result.data[0]
-
-
-
-

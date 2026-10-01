@@ -1,12 +1,19 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
+import { useBookingRole } from "../../hooks/useBookingRole";
 
 export default function ExtensionRequest() {
   const { id: bookingId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
+  const {
+    booking: roleBooking,
+    role: callerRole,
+    loading: roleLoading,
+    error: roleError,
+  } = useBookingRole(bookingId);
 
   const [requestedDays, setRequestedDays] = useState("1");
   const [submitting, setSubmitting] = useState(false);
@@ -69,8 +76,12 @@ export default function ExtensionRequest() {
     }
   };
 
-  if (authLoading) return <div>Loading...</div>;
+  if (authLoading || roleLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (roleError) return <div>{roleError}</div>;
+  if (!roleBooking || !callerRole) return <Navigate to="/error" replace />;
+  if (callerRole !== "renter") return <Navigate to="/error" replace />;
+  if (roleBooking.status !== "active") return <Navigate to="/error" replace />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

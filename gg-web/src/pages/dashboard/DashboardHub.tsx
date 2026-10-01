@@ -7,7 +7,7 @@ const TABS = [
   "My Listings",
   "My Requests",
   "Browse Nearby",
-  "Active Tools",
+  "Bookings",
   "Pending",
   "History",
 ] as const;
@@ -16,6 +16,7 @@ type Tab = (typeof TABS)[number];
 
 type Listing = {
   id: string;
+  owner_id: string;
   title: string;
   price_per_day: number;
   pincode: string;
@@ -24,6 +25,7 @@ type Listing = {
 
 type RentalRequest = {
   id: string;
+  renter_id: string;
   category: string;
   task_description: string;
   needed_from: string;
@@ -34,13 +36,14 @@ type RentalRequest = {
 
 type Booking = {
   id: string;
-  listing_id: string;
+  listing_id: string | null;
   bid_id: string;
   owner_id: string;
   renter_id: string;
   start_date: string;
   end_date: string;
   status: string;
+  cancelled_reason: string | null;
 };
 
 type Bid = {
@@ -69,10 +72,10 @@ const REQUEST_STATUS_STYLES: Record<string, string> = {
 
 const BOOKING_STATUS_STYLES: Record<string, string> = {
   confirmed: "bg-green-500/10 text-green-700",
+  pickup_in_progress: "bg-blue-500/10 text-blue-700",
   active: "bg-blue-500/10 text-blue-700",
-  return_pending: "bg-amber-500/10 text-amber-700",
+  return_in_progress: "bg-amber-500/10 text-amber-700",
   completed: "bg-neutral-500/10 text-neutral-600",
-  non_returned: "bg-red-500/10 text-red-700",
   cancelled: "bg-red-500/10 text-red-700",
 };
 
@@ -83,13 +86,42 @@ const BID_STATUS_STYLES: Record<string, string> = {
   auto_rejected_overlap: "bg-neutral-500/10 text-neutral-600",
 };
 
+function bookingActionFor(role: "owner" | "renter", status: string) {
+  if (status === "confirmed" && role === "renter") {
+    return { label: "Start Pickup", to: "pickup" as const };
+  }
+  if (status === "pickup_in_progress" && role === "renter") {
+    return { label: "Continue Pickup", to: "pickup" as const };
+  }
+  if (status === "pickup_in_progress" && role === "owner") {
+    return { label: "Track", to: "track" as const };
+  }
+  if (status === "active" && role === "owner") {
+    return { label: "Start Return", to: "return" as const };
+  }
+  if (status === "active" && role === "renter") {
+    return { label: "Request Extension", to: "extension" as const };
+  }
+  if (status === "return_in_progress" && role === "owner") {
+    return { label: "Continue Return", to: "return" as const };
+  }
+  if (status === "return_in_progress" && role === "renter") {
+    return { label: "Track", to: "track" as const };
+  }
+  if (status === "completed") {
+    return { label: "View Invoice", to: "invoice" as const };
+  }
+  return null;
+}
+
 export default function DashboardHub() {
   const [activeTab, setActiveTab] = useState<Tab>("My Listings");
   const profileComplete = false;
   const navigate = useNavigate();
   const { userId, loading: authLoading } = useAuth();
 
-  const [listings, setListings] = useState<Listing[]>([]);
+  const [myListingsRaw, setMyListingsRaw] = useState<Listing[]>([]);
+  const [publicListings, setPublicListings] = useState<Listing[]>([]);
   const [requests, setRequests] = useState<RentalRequest[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
@@ -104,24 +136,28 @@ export default function DashboardHub() {
       setError(null);
 
       try {
-        const [listingsRes, requestsRes, bookingsRes, bidsRes] = await Promise.all([
+        const [mineRes, publicRes, requestsRes, bookingsRes, bidsRes] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/listings?owner_id=${userId}`),
           fetch(`${import.meta.env.VITE_API_URL}/listings`),
           fetch(`${import.meta.env.VITE_API_URL}/requests`),
           fetch(`${import.meta.env.VITE_API_URL}/bookings`),
-          fetch(`${import.meta.env.VITE_API_URL}/bids?bidder_id=${userId}`),
+          fetch(`${import.meta.env.VITE_API_URL}/bids`),
         ]);
 
-        const listingsData = listingsRes.ok ? ((await listingsRes.json()) as Listing[]) : [];
+        const mineData = mineRes.ok ? ((await mineRes.json()) as Listing[]) : [];
+        const publicData = publicRes.ok ? ((await publicRes.json()) as Listing[]) : [];
         const requestsData = requestsRes.ok ? ((await requestsRes.json()) as RentalRequest[]) : [];
         const bookingsData = bookingsRes.ok ? ((await bookingsRes.json()) as Booking[]) : [];
         const bidsData = bidsRes.ok ? ((await bidsRes.json()) as Bid[]) : [];
 
-        setListings(listingsData);
+        setMyListingsRaw(mineData);
+        setPublicListings(publicData);
         setRequests(requestsData);
         setBookings(bookingsData);
         setBids(bidsData);
 
-        const anyFailed = !listingsRes.ok || !requestsRes.ok || !bookingsRes.ok || !bidsRes.ok;
+        const anyFailed =
+          !mineRes.ok || !publicRes.ok || !requestsRes.ok || !bookingsRes.ok || !bidsRes.ok;
         if (anyFailed) {
           setError("Some data failed to load. Check the uvicorn log.");
         }
@@ -135,25 +171,52 @@ export default function DashboardHub() {
     load();
   }, [userId]);
 
-  const myListings = listings.filter((l) => l.status !== "unlisted");
+  const allListingsForLookup = [
+    ...myListingsRaw,
+    ...publicListings.filter((p) => !myListingsRaw.some((m) => m.id === p.id)),
+  ];
 
-  const myRequests = requests.filter(
-    (r) => r.status === "open" || r.status === "matched"
-  );
-
-  const nearbyListings = listings.filter(
+  const myListings = myListingsRaw;
+  const myRequests = requests.filter((r) => r.renter_id === userId);
+  const nearbyListings = publicListings.filter(
     (l) => l.status === "available" && l.pincode
   );
-
-  const activeTools = bookings.filter(
-    (b) => b.status === "active" || b.status === "return_pending"
+  const myBookings = bookings.filter(
+    (b) => b.owner_id === userId || b.renter_id === userId
+  );
+  const activeBookings = myBookings.filter(
+    (b) =>
+      b.status === "pickup_in_progress" ||
+      b.status === "active" ||
+      b.status === "return_in_progress"
+  );
+  const historyBookings = myBookings.filter(
+    (b) => b.status === "completed" || b.status === "cancelled"
   );
 
-  const pendingBids = bids.filter((b) => b.status === "pending");
+  const myPendingBids = bids.filter((b) => {
+    if (b.status !== "pending") return false;
+    if (!b.listing_id) return false;
+    const listing = allListingsForLookup.find((l) => l.id === b.listing_id);
+    return listing && listing.owner_id === userId;
+  });
 
-  const historyBookings = bookings.filter(
-    (b) => b.status === "completed" || b.status === "cancelled" || b.status === "non_returned"
-  );
+  const pendingBookings = myBookings.filter((b) => {
+    const role = b.owner_id === userId ? "owner" : "renter";
+    if (b.status === "confirmed" && role === "renter") return true;
+    if (b.status === "active" && role === "owner") return true;
+    if (b.status === "pickup_in_progress" && role === "renter") return true;
+    if (b.status === "pickup_in_progress" && role === "owner") return false;
+    if (b.status === "return_in_progress" && role === "owner") return true;
+    if (b.status === "return_in_progress" && role === "renter") return false;
+    return false;
+  });
+
+  const listingTitleFor = (booking: Booking) => {
+    if (!booking.listing_id) return "Booking";
+    const listing = allListingsForLookup.find((l) => l.id === booking.listing_id);
+    return listing?.title ?? `Booking ${booking.id.slice(0, 8)}`;
+  };
 
   const renderStatusBadge = (status: string, styles: Record<string, string>) => (
     <span
@@ -170,6 +233,34 @@ export default function DashboardHub() {
       {message}
     </div>
   );
+
+  const renderBookingRow = (b: Booking) => {
+    const role: "owner" | "renter" = b.owner_id === userId ? "owner" : "renter";
+    const action = bookingActionFor(role, b.status);
+    return (
+      <li key={b.id}>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{listingTitleFor(b)}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {b.start_date} → {b.end_date} · You are the {role}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {renderStatusBadge(b.status, BOOKING_STATUS_STYLES)}
+            {action && (
+              <Link
+                to={`/bookings/${b.id}/${action.to}`}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+              >
+                {action.label}
+              </Link>
+            )}
+          </div>
+        </div>
+      </li>
+    );
+  };
 
   const renderContent = () => {
     if (loading) {
@@ -261,73 +352,95 @@ export default function DashboardHub() {
           </ul>
         );
 
-      case "Active Tools":
-        if (activeTools.length === 0) return renderEmpty("No active rentals.");
+      case "Bookings":
+        if (activeBookings.length === 0 && historyBookings.length === 0) {
+          return renderEmpty("No bookings yet.");
+        }
         return (
-          <ul className="space-y-2">
-            {activeTools.map((b) => (
-              <li key={b.id}>
-                <Link
-                  to={`/bookings/${b.id}/active`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
-                >
-                  <div>
-                    <p className="text-sm font-medium">Booking {b.id.slice(0, 8)}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {b.start_date} → {b.end_date}
-                    </p>
-                  </div>
-                  {renderStatusBadge(b.status, BOOKING_STATUS_STYLES)}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                Active
+              </h3>
+              {activeBookings.length === 0 ? (
+                renderEmpty("No active bookings.")
+              ) : (
+                <ul className="space-y-2">{activeBookings.map(renderBookingRow)}</ul>
+              )}
+            </section>
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                Completed / Cancelled
+              </h3>
+              {historyBookings.length === 0 ? (
+                renderEmpty("No history yet.")
+              ) : (
+                <ul className="space-y-2">{historyBookings.map(renderBookingRow)}</ul>
+              )}
+            </section>
+          </div>
         );
 
       case "Pending":
-        if (pendingBids.length === 0) return renderEmpty("No pending bids.");
+        if (myPendingBids.length === 0 && pendingBookings.length === 0) {
+          return renderEmpty("Nothing pending.");
+        }
         return (
-          <ul className="space-y-2">
-            {pendingBids.map((b) => (
-              <li key={b.id}>
-                <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">₹{b.proposed_price}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {b.proposed_start} → {b.proposed_end}
-                    </p>
-                  </div>
-                  {renderStatusBadge(b.status, BID_STATUS_STYLES)}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                Bids on your listings
+              </h3>
+              {myPendingBids.length === 0 ? (
+                renderEmpty("No pending bids.")
+              ) : (
+                <ul className="space-y-2">
+                  {myPendingBids.map((b) => {
+                    const listing = allListingsForLookup.find((l) => l.id === b.listing_id);
+                    return (
+                      <li key={b.id}>
+                        <Link
+                          to={`/listings/${b.listing_id}/manage`}
+                          className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">
+                              {listing?.title ?? "Listing"} · ₹{b.proposed_price}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {b.proposed_start} → {b.proposed_end}
+                            </p>
+                          </div>
+                          {renderStatusBadge(b.status, BID_STATUS_STYLES)}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                Bookings awaiting your action
+              </h3>
+              {pendingBookings.length === 0 ? (
+                renderEmpty("No bookings need your action.")
+              ) : (
+                <ul className="space-y-2">{pendingBookings.map(renderBookingRow)}</ul>
+              )}
+            </section>
+          </div>
         );
 
       case "History":
         if (historyBookings.length === 0) return renderEmpty("No history yet.");
-        return (
-          <ul className="space-y-2">
-            {historyBookings.map((b) => (
-              <li key={b.id}>
-                <Link
-                  to={`/bookings/${b.id}/invoice`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3 transition hover:bg-muted"
-                >
-                  <div>
-                    <p className="text-sm font-medium">Booking {b.id.slice(0, 8)}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {b.start_date} → {b.end_date}
-                    </p>
-                  </div>
-                  {renderStatusBadge(b.status, BOOKING_STATUS_STYLES)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        );
+        return <ul className="space-y-2">{historyBookings.map(renderBookingRow)}</ul>;
     }
   };
+
+  if (authLoading) return <div>Loading...</div>;
+  if (!userId) return <div>Not logged in</div>;
 
   return (
     <div className="min-h-screen bg-background text-foreground">

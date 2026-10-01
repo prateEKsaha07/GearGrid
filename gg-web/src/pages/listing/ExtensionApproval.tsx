@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../hooks/useAuth";
@@ -19,14 +19,60 @@ type BookingLookup = {
   listing_id: string;
 };
 
+type Listing = {
+  id: string;
+  owner_id: string;
+  title: string;
+};
+
 export default function ExtensionApproval() {
   const { id: listingId } = useParams<{ id: string }>();
   const { userId, loading: authLoading } = useAuth();
+
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingLoading, setListingLoading] = useState(true);
+  const [notOwner, setNotOwner] = useState(false);
 
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId || !listingId) return;
+
+    let cancelled = false;
+    const load = async () => {
+      setListingLoading(true);
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/listings/${listingId}`
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `Request failed with ${res.status}`);
+        }
+        const data = (await res.json()) as Listing;
+        if (cancelled) return;
+        setListing(data);
+        if (data.owner_id !== userId) {
+          setNotOwner(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : "Something went wrong";
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) setListingLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, listingId]);
 
   const fetchPending = async () => {
     if (!listingId) return;
@@ -71,10 +117,10 @@ export default function ExtensionApproval() {
   };
 
   useEffect(() => {
-    if (!userId || !listingId) return;
+    if (!userId || !listingId || notOwner) return;
     fetchPending();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, listingId]);
+  }, [userId, listingId, notOwner]);
 
   const handleResolve = async (
     requestId: string,
@@ -104,17 +150,21 @@ export default function ExtensionApproval() {
     }
   };
 
-  if (authLoading) return <div>Loading...</div>;
+  if (authLoading || listingLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
+  if (notOwner) return <Navigate to="/error" replace />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">
           Extension Requests
         </h1>
+        {listing?.title && (
+          <p className="mb-6 text-sm text-muted-foreground">{listing.title}</p>
+        )}
 
         {loading && (
           <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
