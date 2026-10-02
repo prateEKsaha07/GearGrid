@@ -46,16 +46,39 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* ─── GearGrid brand surfaces ───────────────────────────────── */
+    --color-gg-navbar: var(--gg-navbar);
+    --color-gg-navbar-foreground: var(--gg-navbar-foreground);
+    --color-gg-navbar-muted: var(--gg-navbar-muted);
+    --color-gg-pill: var(--gg-pill);
+    --color-gg-pill-border: var(--gg-pill-border);
+    --color-gg-lime: var(--gg-lime);
+    --color-gg-lime-foreground: var(--gg-lime-foreground);
+
+    /* ─── GearGrid semantic colors ──────────────────────────────── */
+    --color-gg-amber-bg: var(--gg-amber-bg);
+    --color-gg-amber-fg: var(--gg-amber-fg);
+    --color-gg-amber-border: var(--gg-amber-border);
+    --color-gg-info-bg: var(--gg-info-bg);
+    --color-gg-info-fg: var(--gg-info-fg);
+    --color-gg-info-border: var(--gg-info-border);
+    --color-gg-success-bg: var(--gg-success-bg);
+    --color-gg-success-fg: var(--gg-success-fg);
+    --color-gg-success-border: var(--gg-success-border);
+    --color-gg-cream-bg: var(--gg-cream-bg);
+    --color-gg-cream-fg: var(--gg-cream-fg);
+    --color-gg-cream-border: var(--gg-cream-border);
 }
 
 :root {
-    --background: oklch(1 0 0);
+    --background: oklch(0.972 0.008 120);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.52 0.14 145);
+    --primary: oklch(0.31 0.06 152);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
@@ -66,8 +89,8 @@
     --destructive: oklch(0.577 0.245 27.325);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.52 0.14 145);
-    --chart-1: oklch(0.52 0.14 145);
+    --ring: oklch(0.31 0.06 152);
+    --chart-1: oklch(0.31 0.06 152);
     --chart-2: oklch(0.62 0.12 85);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
@@ -75,16 +98,42 @@
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.52 0.14 145);
+    --sidebar-primary: oklch(0.31 0.06 152);
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.52 0.14 145);
+    --sidebar-ring: oklch(0.31 0.06 152);
+
+    /* ─── GearGrid brand values ─────────────────────────────────── */
+    --gg-navbar: oklch(0.31 0.06 152);
+    --gg-navbar-foreground: oklch(0.97 0.01 130);
+    --gg-navbar-muted: oklch(0.82 0.02 130);
+    --gg-pill: oklch(1 0 0 / 0.10);
+    --gg-pill-border: oklch(1 0 0 / 0.22);
+    --gg-lime: oklch(0.93 0.06 115);
+    --gg-lime-foreground: oklch(0.31 0.06 152);
+
+    /* ─── GearGrid semantic colors ──────────────────────────────── */
+    --gg-amber-bg: oklch(0.96 0.05 85);
+    --gg-amber-fg: oklch(0.48 0.14 65);
+    --gg-amber-border: oklch(0.88 0.08 80);
+
+    --gg-info-bg: oklch(0.95 0.03 240);
+    --gg-info-fg: oklch(0.45 0.15 250);
+    --gg-info-border: oklch(0.86 0.06 240);
+
+    --gg-success-bg: oklch(0.95 0.04 150);
+    --gg-success-fg: oklch(0.42 0.12 150);
+    --gg-success-border: oklch(0.86 0.07 150);
+
+    --gg-cream-bg: oklch(0.97 0.03 90);
+    --gg-cream-fg: oklch(0.35 0.05 80);
+    --gg-cream-border: oklch(0.90 0.05 85);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
+    --background: oklch(0.18 0.01 130);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
     --card-foreground: oklch(0.985 0 0);
@@ -115,6 +164,32 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.68 0.15 145);
+
+    /* Navbar surface stays dark in both modes */
+    --gg-navbar: oklch(0.31 0.06 152);
+    --gg-navbar-foreground: oklch(0.97 0.01 130);
+    --gg-navbar-muted: oklch(0.82 0.02 130);
+    --gg-pill: oklch(1 0 0 / 0.10);
+    --gg-pill-border: oklch(1 0 0 / 0.22);
+    --gg-lime: oklch(0.93 0.06 115);
+    --gg-lime-foreground: oklch(0.31 0.06 152);
+
+    /* Semantic colors — dark variants */
+    --gg-amber-bg: oklch(0.32 0.06 80);
+    --gg-amber-fg: oklch(0.85 0.10 85);
+    --gg-amber-border: oklch(0.40 0.08 80);
+
+    --gg-info-bg: oklch(0.30 0.05 240);
+    --gg-info-fg: oklch(0.82 0.10 240);
+    --gg-info-border: oklch(0.38 0.08 240);
+
+    --gg-success-bg: oklch(0.30 0.06 150);
+    --gg-success-fg: oklch(0.82 0.12 150);
+    --gg-success-border: oklch(0.38 0.09 150);
+
+    --gg-cream-bg: oklch(0.30 0.04 85);
+    --gg-cream-fg: oklch(0.88 0.06 85);
+    --gg-cream-border: oklch(0.40 0.06 85);
 }
 
 @layer base {
@@ -127,4 +202,35 @@
   html {
     @apply font-sans;
     }
+}
+
+/* ─── App-wide: kill horizontal scrollbar ────────────────────────
+   These MUST be outside @layer base. In Tailwind v4, unlayered
+   CSS beats layered CSS, so rules inside @layer base can be
+   overridden by unlayered rules from shadcn/tailwind.css or
+   tw-animate-css. Keeping these unlayered ensures they win. */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+#root {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* ─── Hide vertical scrollbar (page still scrolls normally) ───── */
+html {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / legacy Edge */
+}
+html::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / new Edge */
+}
+
+/* ─── Global compact scale (matches Figma density) ────────────── */
+html {
+  font-size: 15px;   /* was default 16px — shrinks everything ~6% */
 }
