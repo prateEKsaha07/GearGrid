@@ -103,9 +103,6 @@ export default function DashboardHub() {
   const [s5Extensions, setS5Extensions] = useState<ExtensionRequest[]>([]);
   const [s5Loading, setS5Loading] = useState(true);
 
-  const [s6Requests, setS6Requests] = useState<RentalRequest[]>([]);
-  const [s6Loading, setS6Loading] = useState(true);
-
   useEffect(() => {
     if (!userId) return;
 
@@ -143,7 +140,7 @@ export default function DashboardHub() {
       }
     };
 
-    // Section 3 — My Bookings
+    // Section 3 — My Bookings (completed hidden; cancelled visible)
     const fetchSection3 = async () => {
       setS3Loading(true);
       try {
@@ -151,7 +148,9 @@ export default function DashboardHub() {
         if (!res.ok) return;
         const allBookings: Booking[] = await res.json();
         const mine = allBookings.filter(
-          (b) => b.owner_id === userId || b.renter_id === userId
+          (b) =>
+            (b.owner_id === userId || b.renter_id === userId) &&
+            b.status !== "completed"
         );
         setS3Bookings(mine);
 
@@ -234,29 +233,11 @@ export default function DashboardHub() {
       }
     };
 
-    // Section 6 — Open Requests
-    const fetchSection6 = async () => {
-      setS6Loading(true);
-      try {
-        const res = await fetch(`${apiUrl}/requests`);
-        if (res.ok) {
-          const data: RentalRequest[] = await res.json();
-          const filtered = data.filter((r) => r.renter_id !== userId);
-          setS6Requests(filtered);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setS6Loading(false);
-      }
-    };
-
     fetchSection1();
     fetchSection2();
     fetchSection3();
     fetchSection4();
     fetchSection5();
-    fetchSection6();
   }, [userId]);
 
   const renderStatusBadge = (status: string, styles: Record<string, string>) => (
@@ -405,7 +386,7 @@ export default function DashboardHub() {
             {s3Loading ? (
               renderLoadingSpinner()
             ) : s3Bookings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No bookings found.</p>
+              <p className="text-sm text-muted-foreground">No active bookings.</p>
             ) : (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {s3Bookings.map((b) => {
@@ -513,48 +494,6 @@ export default function DashboardHub() {
                       className="mt-4 w-full rounded-md bg-secondary py-1.5 text-xs font-medium text-secondary-foreground transition hover:opacity-90"
                     >
                       Open Booking
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-xl border border-border bg-card p-5">
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">
-              Open Requests Nearby
-            </h2>
-            {s6Loading ? (
-              renderLoadingSpinner()
-            ) : s6Requests.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No open requests available.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {s6Requests.map((req) => (
-                  <div
-                    key={req.id}
-                    className="flex flex-col justify-between rounded-lg border border-border p-4"
-                  >
-                    <div>
-                      <p className="font-semibold text-sm">{req.category}</p>
-                      <p className="mt-2 text-xs text-muted-foreground line-clamp-2">
-                        {req.task_description}
-                      </p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {req.needed_from} → {req.needed_to}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Pincode: {req.pincode}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/requests/${req.id}`)}
-                      className="mt-4 w-full rounded-md bg-secondary py-1.5 text-xs font-medium text-secondary-foreground transition hover:opacity-90"
-                    >
-                      View & Bid
                     </button>
                   </div>
                 ))}
