@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 
 type Listing = {
@@ -99,7 +99,29 @@ export default function BrowseSearch() {
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-6xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Browse Equipment</h1>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Browse</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Find equipment to rent, or see what renters nearby are looking for.
+            </p>
+          </div>
+
+          <div className="flex rounded-lg border border-border p-1">
+            <Link
+              to="/browse"
+              className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground"
+            >
+              Equipment
+            </Link>
+            <Link
+              to="/browse/requests"
+              className="rounded-md px-4 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted"
+            >
+              Requests
+            </Link>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
           <aside>

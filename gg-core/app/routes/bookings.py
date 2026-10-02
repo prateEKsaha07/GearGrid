@@ -908,7 +908,7 @@ def verify_return_pin(id: str, payload: VerifyReturnPinPayload):
 
     start = date.fromisoformat(booking["start_date"])
     end = date.fromisoformat(booking["end_date"])
-    rental_days = (end - start).days
+    rental_days = (end - start).days + 1
 
     base_rental_amount = rental_days * price_per_day
     commission_rate = 0.05

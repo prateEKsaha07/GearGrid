@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -50,8 +50,14 @@ export default function RequestDetail() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notOwner, setNotOwner] = useState(false);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+
+  const [showBidForm, setShowBidForm] = useState(false);
+  const [proposedPrice, setProposedPrice] = useState("");
+  const [proposedStart, setProposedStart] = useState("");
+  const [proposedEnd, setProposedEnd] = useState("");
+  const [bidSubmitting, setBidSubmitting] = useState(false);
+  const [bidError, setBidError] = useState<string | null>(null);
 
   const fetchData = async () => {
     if (!requestId) return;
@@ -68,10 +74,6 @@ export default function RequestDetail() {
       }
       const requestData = (await requestRes.json()) as RentalRequest;
       setRequest(requestData);
-
-      if (userId && requestData.renter_id !== userId) {
-        setNotOwner(true);
-      }
 
       const bidsRes = await fetch(
         `${import.meta.env.VITE_API_URL}/bids?request_id=${requestId}`
@@ -140,16 +142,59 @@ export default function RequestDetail() {
     }
   };
 
+  const handlePlaceBid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestId || !userId) return;
+    setBidSubmitting(true);
+    setBidError(null);
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/bids`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bidder_id: userId,
+          request_id: requestId,
+          proposed_price: Number(proposedPrice),
+          proposed_start: proposedStart,
+          proposed_end: proposedEnd,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Request failed with ${res.status}`);
+      }
+
+      setShowBidForm(false);
+      setProposedPrice("");
+      setProposedStart("");
+      setProposedEnd("");
+      await fetchData();
+    } catch (err) {
+      setBidError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setBidSubmitting(false);
+    }
+  };
+
   if (authLoading) return <div>Loading...</div>;
   if (!userId) return <div>Not logged in</div>;
-  if (notOwner) return <Navigate to="/error" replace />;
+
+  const isRenter = request?.renter_id === userId;
+  const isOwnerBidder = Boolean(request) && !isRenter;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-4xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Request Detail</h1>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight">Request Detail</h1>
+          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+            {isRenter ? "You are the renter" : "You are a bidder"}
+          </span>
+        </div>
 
         {loading && (
           <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
@@ -205,62 +250,173 @@ export default function RequestDetail() {
               </div>
             </section>
 
-            <section>
-              <h2 className="mb-3 text-lg font-medium">Bids</h2>
+            {isRenter && (
+              <section>
+                <h2 className="mb-3 text-lg font-medium">Bids</h2>
 
-              {bids.length === 0 ? (
-                <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
-                  No bids yet for this request.
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-medium">Price</th>
-                        <th className="px-4 py-3 text-left font-medium">Start</th>
-                        <th className="px-4 py-3 text-left font-medium">End</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
-                        <th className="px-4 py-3 text-right font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bids.map((b) => (
-                        <tr key={b.id} className="border-t border-border">
-                          <td className="px-4 py-3">₹{b.proposed_price}</td>
-                          <td className="px-4 py-3">{b.proposed_start}</td>
-                          <td className="px-4 py-3">{b.proposed_end}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                BID_STATUS_STYLES[b.status] ??
-                                "bg-neutral-500/10 text-neutral-600"
-                              }`}
-                            >
-                              {b.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {b.status === "pending" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleAccept(b)}
-                                disabled={actionInFlight === b.id}
-                                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                {actionInFlight === b.id ? "..." : "Accept"}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
+                {bids.length === 0 ? (
+                  <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
+                    No bids yet for this request.
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-lg border border-border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Price</th>
+                          <th className="px-4 py-3 text-left font-medium">Start</th>
+                          <th className="px-4 py-3 text-left font-medium">End</th>
+                          <th className="px-4 py-3 text-left font-medium">Status</th>
+                          <th className="px-4 py-3 text-right font-medium">Action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {bids.map((b) => (
+                          <tr key={b.id} className="border-t border-border">
+                            <td className="px-4 py-3">₹{b.proposed_price}</td>
+                            <td className="px-4 py-3">{b.proposed_start}</td>
+                            <td className="px-4 py-3">{b.proposed_end}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  BID_STATUS_STYLES[b.status] ??
+                                  "bg-neutral-500/10 text-neutral-600"
+                                }`}
+                              >
+                                {b.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {b.status === "pending" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAccept(b)}
+                                  disabled={actionInFlight === b.id}
+                                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  {actionInFlight === b.id ? "..." : "Accept"}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {isOwnerBidder && (
+              <section className="rounded-lg border border-border p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-medium">Interested in this job?</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Send a bid to the renter. If they accept, a booking is created
+                      and you'll coordinate the handover from there.
+                    </p>
+                  </div>
                 </div>
-              )}
-            </section>
+
+                {request.status !== "open" && (
+                  <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    This request is {request.status}. Bidding is closed.
+                  </div>
+                )}
+
+                {request.status === "open" && !showBidForm && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBidForm(true)}
+                    className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+                  >
+                    Place Bid
+                  </button>
+                )}
+
+                {request.status === "open" && showBidForm && (
+                  <form onSubmit={handlePlaceBid} className="mt-4 space-y-4">
+                    {bidError && (
+                      <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900">
+                        {bidError}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">
+                        Proposed Price (₹)
+                      </label>
+                      <input
+                        type="number"
+                        value={proposedPrice}
+                        onChange={(e) => setProposedPrice(e.target.value)}
+                        min={0}
+                        required
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium">
+                          Start Date
+                        </label>
+                        <input
+                          type="date"
+                          value={proposedStart}
+                          onChange={(e) => setProposedStart(e.target.value)}
+                          required
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium">
+                          End Date
+                        </label>
+                        <input
+                          type="date"
+                          value={proposedEnd}
+                          onChange={(e) => setProposedEnd(e.target.value)}
+                          required
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <button
+                        type="submit"
+                        disabled={bidSubmitting}
+                        className="flex-1 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {bidSubmitting ? "Submitting..." : "Submit Bid"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowBidForm(false)}
+                        className="flex-1 rounded-lg border border-border px-4 py-3 text-sm font-medium transition hover:bg-muted"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {bids.length > 0 && (
+                  <div className="mt-6 rounded-lg border border-border p-4">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Bids already placed
+                    </p>
+                    <p className="mt-1 text-sm">
+                      {bids.length} bid{bids.length === 1 ? "" : "s"} on this request
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
       </div>

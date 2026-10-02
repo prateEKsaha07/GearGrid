@@ -69,6 +69,18 @@ const STATUS_STYLES: Record<string, string> = {
 
 const POLL_MS = 5000;
 
+function formatCountdown(msRemaining: number) {
+  if (msRemaining <= 0) return "Rental period ended";
+
+  const totalSeconds = Math.floor(msRemaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+}
+
 export default function TrackBooking() {
   const { id: bookingId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -85,6 +97,7 @@ export default function TrackBooking() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const fetchTrack = async () => {
     if (!bookingId || !userId) return;
@@ -158,6 +171,11 @@ export default function TrackBooking() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.booking.status]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleStartPickup = async () => {
     if (!bookingId || !userId) return;
@@ -244,6 +262,21 @@ export default function TrackBooking() {
     ? TIMELINE.indexOf(data.booking.status as (typeof TIMELINE)[number])
     : -1;
 
+  const renderCountdown = () => {
+    if (!data || data.booking.status !== "active") return null;
+    const endMs = new Date(`${data.booking.end_date}T23:59:59`).getTime();
+    const msRemaining = endMs - now;
+
+    return (
+      <section className="rounded-lg border border-border p-6 text-center">
+        <p className="text-sm text-muted-foreground">Time Remaining</p>
+        <p className="mt-2 text-3xl font-semibold tabular-nums">
+          {formatCountdown(msRemaining)}
+        </p>
+      </section>
+    );
+  };
+
   const renderAction = () => {
     if (!data) return null;
     const { booking, role } = data;
@@ -303,10 +336,22 @@ export default function TrackBooking() {
     }
 
     if (booking.status === "active" && role === "renter") {
+      if (!booking.listing_id) {
+        return (
+          <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+            Rental is active. Extensions are only available for bookings tied to a
+            specific listing.
+          </div>
+        );
+      }
       return (
-        <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-          Rental is active. The owner will start the return when it's time.
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate(`/bookings/${bookingId}/extension`)}
+          className="w-full rounded-lg border border-border px-4 py-3 text-sm font-medium transition hover:bg-muted"
+        >
+          Request Extension
+        </button>
       );
     }
 
@@ -431,6 +476,8 @@ export default function TrackBooking() {
                 </p>
               )}
             </section>
+
+            {renderCountdown()}
 
             <section className="space-y-3">
               <h3 className="text-sm font-medium">Your Action</h3>

@@ -1,11 +1,11 @@
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from supabase import create_client, Client
-from datetime import datetime
+
 from app.services.calendar_logic import has_overlap
 
 load_dotenv()
@@ -19,9 +19,11 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 router = APIRouter()
 
+
 class ExtensionCreate(BaseModel):
     booking_id: str
     requested_days: int
+
 
 @router.post("")
 def create_extension(payload: ExtensionCreate):
@@ -38,6 +40,12 @@ def create_extension(payload: ExtensionCreate):
     booking = booking_result.data[0]
     listing_id = booking["listing_id"]
     end_date = date.fromisoformat(booking["end_date"])
+
+    if listing_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Extensions are only supported for listing-based bookings.",
+        )
 
     try:
         listing_result = (
@@ -87,8 +95,29 @@ def create_extension(payload: ExtensionCreate):
 
     return insert_result.data[0]
 
+
+@router.get("")
+def list_extensions(
+    status: str | None = None,
+    booking_id: str | None = None,
+):
+    query = supabase.table("extension_requests").select("*")
+    if status is not None:
+        query = query.eq("status", status)
+    if booking_id is not None:
+        query = query.eq("booking_id", booking_id)
+
+    try:
+        result = query.execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result.data
+
+
 class ExtensionResolve(BaseModel):
     decision: str
+
 
 @router.patch("/{id}/resolve")
 def resolve_extension(id: str, payload: ExtensionResolve):
@@ -112,6 +141,12 @@ def resolve_extension(id: str, payload: ExtensionResolve):
             status_code=400, detail="Cannot resolve a blocked extension request"
         )
 
+    if extension["status"] in ("approved", "declined"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Extension request is already {extension['status']}",
+        )
+
     now = datetime.utcnow().isoformat()
 
     if payload.decision == "approved":
@@ -120,7 +155,7 @@ def resolve_extension(id: str, payload: ExtensionResolve):
 
         try:
             booking_result = (
-                supabase.table("bookings").select("end_date").eq("id", booking_id).execute()
+                supabase.table("bookings").select("*").eq("id", booking_id).execute()
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -128,13 +163,36 @@ def resolve_extension(id: str, payload: ExtensionResolve):
         if not booking_result.data:
             raise HTTPException(status_code=404, detail="Booking not found")
 
-        current_end = date.fromisoformat(booking_result.data[0]["end_date"])
+        booking = booking_result.data[0]
+        listing_id = booking["listing_id"]
+
+        if listing_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot extend request-side booking",
+            )
+
+        current_end = date.fromisoformat(booking["end_date"])
+        proposed_start = current_end + timedelta(days=1)
+        proposed_end = current_end + timedelta(days=requested_days)
+
+        if has_overlap(
+            listing_id,
+            proposed_start.isoformat(),
+            proposed_end.isoformat(),
+            exclude_booking_id=booking_id,
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Slot conflict — dates are no longer available. Another booking now overlaps this extension window.",
+            )
+
         new_end = current_end + timedelta(days=requested_days)
 
         try:
             supabase.table("bookings").update(
                 {"end_date": new_end.isoformat()}
-            ).eq("id", booking_id).execute()
+            ).eq("id", booking_id).select().execute()
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -147,6 +205,7 @@ def resolve_extension(id: str, payload: ExtensionResolve):
             supabase.table("extension_requests")
             .update({"status": new_status, "resolved_at": now})
             .eq("id", id)
+            .select()
             .execute()
         )
     except Exception as e:
@@ -156,17 +215,3 @@ def resolve_extension(id: str, payload: ExtensionResolve):
         raise HTTPException(status_code=404, detail="Extension request not found")
 
     return result.data[0]
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import NavBar from "../../components/shared/NavBar";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -10,6 +10,7 @@ type Listing = {
   price_per_day: number;
   pincode: string;
   status: string;
+  description?: string;
 };
 
 type Bid = {
@@ -40,69 +41,71 @@ const BID_STATUS_STYLES: Record<string, string> = {
 
 export default function ListingDashboard() {
   const navigate = useNavigate();
+  const { id: routeId } = useParams<{ id: string }>();
   const { userId, loading: authLoading } = useAuth();
 
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [listing, setListing] = useState<Listing | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
-  const [loadingListings, setLoadingListings] = useState(true);
-  const [loadingBids, setLoadingBids] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!userId) return;
-
-    const load = async () => {
-      setLoadingListings(true);
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/listings`);
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || `Request failed with ${res.status}`);
-        }
-        const data = (await res.json()) as Listing[];
-        const mine = data.filter((l) => l.owner_id === userId);
-        setListings(mine);
-        if (mine.length > 0) setSelectedId(mine[0].id);
-        setError(null);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Something went wrong";
-        setError(message);
-        setListings([]);
-      } finally {
-        setLoadingListings(false);
-      }
-    };
-
-    load();
-  }, [userId]);
-
-  const fetchBids = async (listingId: string) => {
-    setLoadingBids(true);
+  const fetchManageData = async (targetId: string) => {
+    setLoading(true);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/bids?listing_id=${listingId}`
+        `${import.meta.env.VITE_API_URL}/listings/${targetId}/manage`
       );
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Request failed with ${res.status}`);
       }
-      const data = (await res.json()) as Bid[];
-      setBids(data);
+      const data = await res.json();
+      
+      // Handle array or object response from /manage
+      const manageData = Array.isArray(data) ? data[0] : data;
+      setListing(manageData);
+      setBids(manageData.bids || []);
+      setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setError(message);
+      setListing(null);
       setBids([]);
     } finally {
-      setLoadingBids(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (selectedId) fetchBids(selectedId);
-    else setBids([]);
-  }, [selectedId]);
+    if (!userId) return;
+
+    if (routeId) {
+      fetchManageData(routeId);
+    } else {
+      // Fallback: If no ID in route, fetch user's first listing
+      const fetchFirstListing = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_URL}/listings?owner_id=${userId}`
+          );
+          if (res.ok) {
+            const data: Listing[] = await res.json();
+            if (data.length > 0) {
+              navigate(`/listings/${data[0].id}/manage`, { replace: true });
+            } else {
+              setLoading(false);
+            }
+          }
+        } catch (err) {
+          setError("Failed to load listings");
+          setLoading(false);
+        }
+      };
+      fetchFirstListing();
+    }
+  }, [userId, routeId]);
 
   const handleAccept = async (bid: Bid) => {
     setActionInFlight(bid.id);
@@ -138,7 +141,7 @@ export default function ListingDashboard() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       navigate("/error", {
-        state: { message, redirectTo: "/listings/" + (selectedId ?? "") + "/manage" },
+        state: { message, redirectTo: `/listings/${routeId}/manage` },
       });
     } finally {
       setActionInFlight(null);
@@ -158,98 +161,100 @@ export default function ListingDashboard() {
         throw new Error(text || `Request failed with ${res.status}`);
       }
 
-      if (selectedId) await fetchBids(selectedId);
+      if (routeId) await fetchManageData(routeId);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       navigate("/error", {
-        state: { message, redirectTo: "/listings/" + (selectedId ?? "") + "/manage" },
+        state: { message, redirectTo: `/listings/${routeId}/manage` },
       });
     } finally {
       setActionInFlight(null);
     }
   };
 
-  if (authLoading) return <div>Loading...</div>;
-  if (!userId) return <div>Not logged in</div>;
+  if (authLoading) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
+  if (!userId) return <div className="p-6 text-sm text-muted-foreground">Not logged in</div>;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NavBar unreadCount={0} userName="User" />
 
       <div className="mx-auto max-w-6xl px-6 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Listing Dashboard</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Manage Listing</h1>
+            {listing && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {listing.title} · ₹{listing.price_per_day}/day · Pincode: {listing.pincode}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium transition hover:bg-muted"
+          >
+            Back to Dashboard
+          </button>
+        </div>
 
-        {loadingListings && (
+        {loading && (
           <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
-            Loading...
+            Loading listing and bids...
           </div>
         )}
 
-        {!loadingListings && error && (
+        {!loading && error && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-900">
             {error}
           </div>
         )}
 
-        {!loadingListings && !error && listings.length === 0 && (
+        {!loading && !error && !listing && (
           <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
-            You haven't created any listings yet.
+            Listing not found.
           </div>
         )}
 
-        {!loadingListings && !error && listings.length > 0 && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
-            <aside className="space-y-2">
-              {listings.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setSelectedId(l.id)}
-                  className={`w-full rounded-lg border p-3 text-left transition ${
-                    selectedId === l.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:bg-muted"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-medium leading-tight">{l.title}</span>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        LISTING_STATUS_STYLES[l.status] ??
-                        "bg-neutral-500/10 text-neutral-600"
-                      }`}
-                    >
-                      {l.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    ₹{l.price_per_day}/day · {l.pincode}
-                  </p>
-                </button>
-              ))}
-            </aside>
-
-            <section>
-              {loadingBids && (
-                <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
-                  Loading bids...
+        {!loading && !error && listing && (
+          <div className="space-y-6">
+            {/* Listing Header / Status Card */}
+            <div className="flex items-center justify-between rounded-xl border border-border bg-card p-5">
+              <div>
+                <span className="text-xs text-muted-foreground">Listing ID</span>
+                <p className="font-mono text-sm font-medium">{listing.id}</p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Status</span>
+                <div className="mt-1">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                      LISTING_STATUS_STYLES[listing.status] ??
+                      "bg-neutral-500/10 text-neutral-600"
+                    }`}
+                  >
+                    {listing.status}
+                  </span>
                 </div>
-              )}
+              </div>
+            </div>
 
-              {!loadingBids && bids.length === 0 && (
-                <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
-                  No bids yet for this listing.
+            {/* Incoming Bids Section */}
+            <section className="rounded-xl border border-border bg-card p-5">
+              <h2 className="mb-4 text-lg font-semibold tracking-tight">Incoming Bids</h2>
+
+              {bids.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  No bids received for this listing yet.
                 </div>
-              )}
-
-              {!loadingBids && bids.length > 0 && (
+              ) : (
                 <div className="overflow-hidden rounded-lg border border-border">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
                       <tr>
-                        <th className="px-4 py-3 text-left font-medium">Price</th>
-                        <th className="px-4 py-3 text-left font-medium">Start</th>
-                        <th className="px-4 py-3 text-left font-medium">End</th>
+                        <th className="px-4 py-3 text-left font-medium">Proposed Price</th>
+                        <th className="px-4 py-3 text-left font-medium">Start Date</th>
+                        <th className="px-4 py-3 text-left font-medium">End Date</th>
                         <th className="px-4 py-3 text-left font-medium">Status</th>
                         <th className="px-4 py-3 text-right font-medium">Actions</th>
                       </tr>
@@ -257,7 +262,7 @@ export default function ListingDashboard() {
                     <tbody>
                       {bids.map((b) => (
                         <tr key={b.id} className="border-t border-border">
-                          <td className="px-4 py-3">₹{b.proposed_price}</td>
+                          <td className="px-4 py-3 font-semibold">₹{b.proposed_price}</td>
                           <td className="px-4 py-3">{b.proposed_start}</td>
                           <td className="px-4 py-3">{b.proposed_end}</td>
                           <td className="px-4 py-3">

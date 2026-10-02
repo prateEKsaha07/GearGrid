@@ -73,7 +73,7 @@ def create_invoice(payload: InvoiceCreate):
 
     start = date.fromisoformat(booking["start_date"])
     end = date.fromisoformat(booking["end_date"])
-    rental_days = (end - start).days
+    rental_days = (end - start).days + 1
 
     base_rental_amount = rental_days * price_per_day
 

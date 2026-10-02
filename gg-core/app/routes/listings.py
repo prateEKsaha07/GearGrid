@@ -167,3 +167,27 @@ async def upload_listing_photo(id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=404, detail="Listing not found")
 
     return result.data[0]
+
+@router.get("/{id}/manage")
+def get_listing_manage_data(id: str):
+    try:
+        # Fetch listing details
+        listing_res = supabase.table("equipment_listings").select("*").eq("id", id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not listing_res.data:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    listing = listing_res.data[0]
+
+    try:
+        # Fetch related bids for this listing
+        bids_res = supabase.table("bids").select("*").eq("listing_id", id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    listing["bids"] = bids_res.data or []
+
+    # Return as an array matching your expected JSON response
+    return [listing]

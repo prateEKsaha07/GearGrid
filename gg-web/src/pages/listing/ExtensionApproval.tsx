@@ -14,16 +14,38 @@ type ExtensionRequest = {
   resolved_at: string | null;
 };
 
-type BookingLookup = {
-  id: string;
-  listing_id: string;
-};
-
 type Listing = {
   id: string;
   owner_id: string;
   title: string;
 };
+
+type PendingDecision = {
+  requestId: string;
+  decision: "approved" | "declined";
+  requestedDays: number;
+  extraFee: number;
+  bookingId: string;
+  currentEndDate: string | null;
+  newEndDate: string | null;
+};
+
+function addDays(iso: string, days: number) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+async function extractErrorMessage(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    if (json && typeof json.detail === "string") return json.detail;
+  } catch {
+    // fall through
+  }
+  return text || `Request failed with ${res.status}`;
+}
 
 export default function ExtensionApproval() {
   const { id: listingId } = useParams<{ id: string }>();
@@ -34,9 +56,12 @@ export default function ExtensionApproval() {
   const [notOwner, setNotOwner] = useState(false);
 
   const [requests, setRequests] = useState<ExtensionRequest[]>([]);
+  const [bookingEndDates, setBookingEndDates] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<PendingDecision | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId || !listingId) return;
@@ -81,7 +106,7 @@ export default function ExtensionApproval() {
 
     const { data: bookingsData, error: bookingsError } = await supabase
       .from("bookings")
-      .select("id, listing_id")
+      .select("id, listing_id, end_date")
       .eq("listing_id", listingId);
 
     if (bookingsError) {
@@ -91,7 +116,13 @@ export default function ExtensionApproval() {
       return;
     }
 
-    const bookingIds = (bookingsData ?? []).map((b: BookingLookup) => b.id);
+    const bookings = bookingsData ?? [];
+    const bookingIds = bookings.map((b) => b.id);
+    const endDates: Record<string, string> = {};
+    bookings.forEach((b) => {
+      if (b.end_date) endDates[b.id] = b.end_date;
+    });
+    setBookingEndDates(endDates);
 
     if (bookingIds.length === 0) {
       setRequests([]);
@@ -122,11 +153,36 @@ export default function ExtensionApproval() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, listingId, notOwner]);
 
-  const handleResolve = async (
-    requestId: string,
-    decision: "approved" | "declined"
-  ) => {
+  const openModal = (r: ExtensionRequest, decision: "approved" | "declined") => {
+    const currentEnd = bookingEndDates[r.booking_id] ?? null;
+    const newEnd =
+      currentEnd && decision === "approved"
+        ? addDays(currentEnd, r.requested_days)
+        : null;
+
+    setModalError(null);
+    setPendingDecision({
+      requestId: r.id,
+      decision,
+      requestedDays: r.requested_days,
+      extraFee: r.extra_fee,
+      bookingId: r.booking_id,
+      currentEndDate: currentEnd,
+      newEndDate: newEnd,
+    });
+  };
+
+  const closeModal = () => {
+    if (actionInFlight) return;
+    setPendingDecision(null);
+    setModalError(null);
+  };
+
+  const confirmDecision = async () => {
+    if (!pendingDecision) return;
+    const { requestId, decision } = pendingDecision;
     setActionInFlight(requestId);
+    setModalError(null);
     try {
       const res = await fetch(
         `${import.meta.env.VITE_API_URL}/extensions/${requestId}/resolve`,
@@ -137,14 +193,15 @@ export default function ExtensionApproval() {
         }
       );
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Request failed with ${res.status}`);
+        throw new Error(await extractErrorMessage(res));
       }
 
+      setPendingDecision(null);
+      setModalError(null);
       await fetchPending();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
-      setError(message);
+      setModalError(message);
     } finally {
       setActionInFlight(null);
     }
@@ -186,45 +243,140 @@ export default function ExtensionApproval() {
 
         {!loading && !error && requests.length > 0 && (
           <div className="space-y-3">
-            {requests.map((r) => (
-              <div key={r.id} className="rounded-lg border border-border p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium">
-                      +{r.requested_days} day{r.requested_days === 1 ? "" : "s"}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Extra fee: ₹{r.extra_fee}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Requested {new Date(r.created_at).toLocaleString()}
-                    </p>
-                  </div>
+            {requests.map((r) => {
+              const currentEnd = bookingEndDates[r.booking_id];
+              const projectedEnd = currentEnd
+                ? addDays(currentEnd, r.requested_days)
+                : null;
 
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleResolve(r.id, "approved")}
-                      disabled={actionInFlight === r.id}
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {actionInFlight === r.id ? "..." : "Approve"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleResolve(r.id, "declined")}
-                      disabled={actionInFlight === r.id}
-                      className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Decline
-                    </button>
+              return (
+                <div key={r.id} className="rounded-lg border border-border p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">
+                        +{r.requested_days} day{r.requested_days === 1 ? "" : "s"}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Extra fee: ₹{r.extra_fee}
+                      </p>
+                      {currentEnd && projectedEnd && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Return date: {currentEnd} → {projectedEnd}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Requested {new Date(r.created_at).toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openModal(r, "approved")}
+                        disabled={actionInFlight === r.id}
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openModal(r, "declined")}
+                        disabled={actionInFlight === r.id}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Decline
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {pendingDecision && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {pendingDecision.decision === "approved" ? (
+              <>
+                <h2 className="text-lg font-semibold">Approve extension?</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Extend this booking by{" "}
+                  <span className="font-medium text-foreground">
+                    {pendingDecision.requestedDays} day
+                    {pendingDecision.requestedDays === 1 ? "" : "s"}
+                  </span>
+                  .
+                </p>
+                <div className="mt-4 space-y-1 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Extra fee</span>
+                    <span>₹{pendingDecision.extraFee}</span>
+                  </div>
+                  {pendingDecision.currentEndDate && pendingDecision.newEndDate && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">New return date</span>
+                      <span>{pendingDecision.newEndDate}</span>
+                    </div>
+                  )}
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Extra fee is paid directly between the parties. The booking
+                  calendar will shift by these days.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold">Decline extension?</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  The booking will keep its current return date. The renter will
+                  be notified.
+                </p>
+              </>
+            )}
+
+            {modalError && (
+              <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900">
+                {modalError}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={actionInFlight !== null}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDecision}
+                disabled={actionInFlight !== null}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${
+                  pendingDecision.decision === "approved"
+                    ? "bg-primary"
+                    : "bg-red-600"
+                }`}
+              >
+                {actionInFlight
+                  ? "..."
+                  : pendingDecision.decision === "approved"
+                  ? "Approve"
+                  : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
